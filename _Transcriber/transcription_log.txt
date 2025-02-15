@@ -1,0 +1,29 @@
+2025-01-28 13:10:10,319 - INFO - Found 31 media files to transcribe
+2025-01-28 13:10:10,319 - INFO - Output format(s): srt
+2025-01-28 13:10:10,319 - INFO - Using device: cpu
+2025-01-28 13:10:10,319 - INFO - Loading Whisper model: medium
+2025-01-28 14:35:28,006 - ERROR - FFmpeg error extracting audio from C:\Users\Phill\Dropbox\Documents\Journal\2021.12 (December)\_Transcriber\..\2021.12.28-11.39 working on computer time lapse (visual) IMG_1854.MOV: [out#0/wav @ 000001c0e4e07c40] Output file does not contain any stream
+Error opening output file C:\Users\Phill\AppData\Local\Temp\2021.12.28-11.39 working on computer time lapse (visual) IMG_1854_temp_audio.wav.
+Error opening output files: Invalid argument
+
+2025-01-28 14:35:28,015 - ERROR - Error transcribing C:\Users\Phill\Dropbox\Documents\Journal\2021.12 (December)\_Transcriber\..\2021.12.28-11.39 working on computer time lapse (visual) IMG_1854.MOV: Command '['ffmpeg', '-i', 'C:\\Users\\Phill\\Dropbox\\Documents\\Journal\\2021.12 (December)\\_Transcriber\\..\\2021.12.28-11.39 working on computer time lapse (visual) IMG_1854.MOV', '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-loglevel', 'error', '-y', 'C:\\Users\\Phill\\AppData\\Local\\Temp\\2021.12.28-11.39 working on computer time lapse (visual) IMG_1854_temp_audio.wav']' returned non-zero exit status 4294967274.
+2025-01-28 14:38:09,540 - ERROR - FFmpeg error extracting audio from C:\Users\Phill\Dropbox\Documents\Journal\2021.12 (December)\_Transcriber\..\2021.12.28-22.01 time lapse IMG_1838.MOV: [out#0/wav @ 00000145846f3e80] Output file does not contain any stream
+Error opening output file C:\Users\Phill\AppData\Local\Temp\2021.12.28-22.01 time lapse IMG_1838_temp_audio.wav.
+Error opening output files: Invalid argument
+
+2025-01-28 14:38:09,541 - ERROR - Error transcribing C:\Users\Phill\Dropbox\Documents\Journal\2021.12 (December)\_Transcriber\..\2021.12.28-22.01 time lapse IMG_1838.MOV: Command '['ffmpeg', '-i', 'C:\\Users\\Phill\\Dropbox\\Documents\\Journal\\2021.12 (December)\\_Transcriber\\..\\2021.12.28-22.01 time lapse IMG_1838.MOV', '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-loglevel', 'error', '-y', 'C:\\Users\\Phill\\AppData\\Local\\Temp\\2021.12.28-22.01 time lapse IMG_1838_temp_audio.wav']' returned non-zero exit status 4294967274.
+2025-01-28 15:41:28,078 - ERROR - FFmpeg error extracting audio from C:\Users\Phill\Dropbox\Documents\Journal\2021.12 (December)\_Transcriber\..\NBight outdoor (visual).mkv: [out#0/wav @ 000002028d982200] Output file does not contain any stream
+Error opening output file C:\Users\Phill\AppData\Local\Temp\NBight outdoor (visual)_temp_audio.wav.
+Error opening output files: Invalid argument
+
+2025-01-28 15:41:28,081 - ERROR - Error transcribing C:\Users\Phill\Dropbox\Documents\Journal\2021.12 (December)\_Transcriber\..\NBight outdoor (visual).mkv: Command '['ffmpeg', '-i', 'C:\\Users\\Phill\\Dropbox\\Documents\\Journal\\2021.12 (December)\\_Transcriber\\..\\NBight outdoor (visual).mkv', '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-loglevel', 'error', '-y', 'C:\\Users\\Phill\\AppData\\Local\\Temp\\NBight outdoor (visual)_temp_audio.wav']' returned non-zero exit status 4294967274.
+2025-01-28 16:28:09,806 - INFO - 
+Transcription Summary:
+2025-01-28 16:28:09,807 - INFO - Total files processed: 31
+2025-01-28 16:28:09,807 - INFO - Successfully transcribed: 28
+2025-01-28 16:28:09,807 - INFO - Failed: 3
+2025-01-28 16:28:09,808 - INFO - 
+Failed files:
+2025-01-28 16:28:09,808 - INFO - 2021.12.28-11.39 working on computer time lapse (visual) IMG_1854.MOV: Command '['ffmpeg', '-i', 'C:\\Users\\Phill\\Dropbox\\Documents\\Journal\\2021.12 (December)\\_Transcriber\\..\\2021.12.28-11.39 working on computer time lapse (visual) IMG_1854.MOV', '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-loglevel', 'error', '-y', 'C:\\Users\\Phill\\AppData\\Local\\Temp\\2021.12.28-11.39 working on computer time lapse (visual) IMG_1854_temp_audio.wav']' returned non-zero exit status 4294967274.
+2025-01-28 16:28:09,808 - INFO - 2021.12.28-22.01 time lapse IMG_1838.MOV: Command '['ffmpeg', '-i', 'C:\\Users\\Phill\\Dropbox\\Documents\\Journal\\2021.12 (December)\\_Transcriber\\..\\2021.12.28-22.01 time lapse IMG_1838.MOV', '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-loglevel', 'error', '-y', 'C:\\Users\\Phill\\AppData\\Local\\Temp\\2021.12.28-22.01 time lapse IMG_1838_temp_audio.wav']' returned non-zero exit status 4294967274.
+2025-01-28 16:28:09,808 - INFO - NBight outdoor (visual).mkv: Command '['ffmpeg', '-i', 'C:\\Users\\Phill\\Dropbox\\Documents\\Journal\\2021.12 (December)\\_Transcriber\\..\\NBight outdoor (visual).mkv', '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-loglevel', 'error', '-y', 'C:\\Users\\Phill\\AppData\\Local\\Temp\\NBight outdoor (visual)_temp_audio.wav']' returned non-zero exit status 4294967274.
