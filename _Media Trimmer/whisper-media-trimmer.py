@@ -5,13 +5,13 @@ import torch
 import argparse
 from pathlib import Path
 import concurrent.futures
+from tqdm import tqdm
 import logging
 import subprocess
 import json
 import tempfile
 import shutil
 import os
-from concurrent.futures import ThreadPoolExecutor
 
 # Set up logging
 logging.basicConfig(level=logging.INFO,
@@ -33,7 +33,15 @@ SUPPORTED_FORMATS = {
 }
 
 def get_media_type(file_path):
-    """Determine if the file is audio or video."""
+    """
+    Determine if the file is audio or video based on its extension.
+    
+    Args:
+        file_path: Path to the media file
+        
+    Returns:
+        str: 'audio', 'video', or None if unsupported
+    """
     suffix = Path(file_path).suffix.lower()
     if suffix in SUPPORTED_FORMATS['audio']:
         return 'audio'
@@ -42,7 +50,15 @@ def get_media_type(file_path):
     return None
 
 def get_media_duration(file_path):
-    """Get duration of media file using ffprobe."""
+    """
+    Get duration of media file using ffprobe.
+    
+    Args:
+        file_path: Path to the media file
+        
+    Returns:
+        float: Duration in seconds, or None if error
+    """
     cmd = [
         'ffprobe', '-v', 'quiet', '-print_format', 'json',
         '-show_format', str(file_path)
@@ -56,7 +72,16 @@ def get_media_duration(file_path):
         return None
 
 def extract_audio(file_path, output_path):
-    """Extract audio from video file."""
+    """
+    Extract audio from video file using FFmpeg.
+    
+    Args:
+        file_path: Path to input video file
+        output_path: Path for output audio file
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
     cmd = [
         'ffmpeg', '-i', str(file_path),
         '-vn',  # No video
@@ -73,8 +98,90 @@ def extract_audio(file_path, output_path):
         logging.error(f"FFmpeg error: {e.stderr.decode()}")
         return False
 
-def trim_video(input_path, output_path, segments, padding_ms=500):
-    """Trim video keeping only speech segments."""
+def get_speech_segments(model, audio_path, language=None):
+    """
+    Use Whisper to detect speech segments in the audio, with improved handling
+    of overlapping segments and proper chronological ordering.
+    
+    Args:
+        model: Loaded Whisper model
+        audio_path: Path to audio file
+        language: Optional ISO language code
+        
+    Returns:
+        list: List of dicts containing start and end times in milliseconds
+    """
+    try:
+        # Transcribe audio with word-level timestamps
+        result = model.transcribe(
+            str(audio_path),
+            word_timestamps=True,
+            language=language if language else None
+        )
+        
+        # Extract and flatten all words from all segments
+        all_words = []
+        for segment in result["segments"]:
+            all_words.extend(segment["words"])
+        
+        # Sort words chronologically by start time
+        all_words.sort(key=lambda x: x["start"])
+        
+        segments = []
+        current_segment = None
+        
+        # Process words in chronological order
+        for word in all_words:
+            # Convert times to milliseconds
+            start_time = word["start"] * 1000
+            end_time = word["end"] * 1000
+            
+            if current_segment is None:
+                # Start first segment
+                current_segment = {"start": start_time, "end": end_time}
+            elif start_time <= current_segment["end"] + 1000:
+                # Word starts before or within 1 second of current segment
+                # Extend current segment
+                current_segment["end"] = max(current_segment["end"], end_time)
+            else:
+                # Gap is too large, start new segment
+                segments.append(current_segment)
+                current_segment = {"start": start_time, "end": end_time}
+        
+        # Add the final segment
+        if current_segment is not None:
+            segments.append(current_segment)
+        
+        # Merge any remaining overlapping segments
+        if segments:
+            merged = [segments[0]]
+            for segment in segments[1:]:
+                if segment["start"] <= merged[-1]["end"]:
+                    # Merge overlapping segments
+                    merged[-1]["end"] = max(merged[-1]["end"], segment["end"])
+                else:
+                    # No overlap, add as new segment
+                    merged.append(segment)
+            segments = merged
+        
+        return segments
+    except Exception as e:
+        logging.error(f"Error processing {audio_path}: {str(e)}")
+        return []
+
+def trim_video(input_path, output_path, segments, padding_ms=250):
+    """
+    Trim video keeping only speech segments using FFmpeg.
+    
+    Args:
+        input_path: Path to input video
+        output_path: Path for output video
+        segments: List of speech segments
+        padding_ms: Padding in milliseconds around segments
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
     if not segments:
         logging.warning(f"No speech segments found in {input_path}")
         return False
@@ -83,6 +190,7 @@ def trim_video(input_path, output_path, segments, padding_ms=500):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
         filter_parts = []
         for i, segment in enumerate(segments):
+            # Add padding while respecting file boundaries
             start = max(0, segment["start"] - padding_ms) / 1000
             duration = (min(get_media_duration(input_path) * 1000, 
                           segment["end"] + padding_ms) - 
@@ -94,6 +202,7 @@ def trim_video(input_path, output_path, segments, padding_ms=500):
         filter_file = f.name
 
     try:
+        # Apply the filter complex using FFmpeg
         cmd = [
             'ffmpeg', '-i', str(input_path),
             '-vf', f"select='({filter_complex})',setpts=N/FRAME_RATE/TB",
@@ -108,80 +217,49 @@ def trim_video(input_path, output_path, segments, padding_ms=500):
         os.unlink(filter_file)
         return False
 
-def get_speech_segments(model, audio_path, language=None):
-    """Use Whisper to detect speech segments in the audio."""
-    try:
-        result = model.transcribe(
-            str(audio_path),
-            word_timestamps=True,
-            language=language if language else None
-        )
-        
-        segments = []
-        current_segment = None
-        
-        for segment in result["segments"]:
-            for word in segment["words"]:
-                start_time = word["start"] * 1000
-                end_time = word["end"] * 1000
-                
-                if current_segment is None:
-                    current_segment = {"start": start_time, "end": end_time}
-                elif end_time - current_segment["end"] > 1000:
-                    segments.append(current_segment)
-                    current_segment = {"start": start_time, "end": end_time}
-                else:
-                    current_segment["end"] = end_time
-        
-        if current_segment is not None:
-            segments.append(current_segment)
-        
-        return segments
-    except Exception as e:
-        logging.error(f"Error processing {audio_path}: {str(e)}")
-        return []
-
 def process_file(args):
-    """Process a single media file."""
-    input_path, model, padding_ms, language, _ = args  # Progress parameter is ignored
+    """
+    Process a single media file to remove non-speech segments.
+    
+    Args:
+        args: Tuple containing (input_path, model, padding_ms, language)
+        
+    Returns:
+        tuple: (success: bool, result: str)
+    """
+    input_path, model, padding_ms, language = args
     try:
-        print(f"\nProcessing: {input_path.name}")
         # Create output path
         output_path = input_path.parent / f"{input_path.stem}_trimmed{input_path.suffix}"
         
         # Determine media type
         media_type = get_media_type(input_path)
         if not media_type:
-            print(f"✗ Skipped unsupported format: {input_path.name}")
             return False, f"Unsupported format: {input_path}"
 
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_audio = Path(temp_dir) / "temp_audio.wav"
             
-            # Extract audio if it's a video, or load audio directly
-            print(f"⟳ Extracting/loading audio from {input_path.name}")
+            # Extract audio if video, or use audio directly
             if media_type == 'video':
                 if not extract_audio(input_path, temp_audio):
-                    print(f"✗ Failed to extract audio from {input_path.name}")
                     return False, f"Failed to extract audio from {input_path}"
                 audio_path = temp_audio
             else:
                 audio_path = input_path
 
-            print(f"⟳ Detecting speech in {input_path.name}")
+            # Get speech segments
             segments = get_speech_segments(model, audio_path, language)
             
             if not segments:
-                print(f"✗ No speech segments found in {input_path.name}")
                 return False, f"No speech segments found in {input_path}"
 
-            print(f"⟳ Trimming {input_path.name}")
             # Process based on media type
             if media_type == 'video':
                 success = trim_video(input_path, output_path, segments, padding_ms)
             else:
-                # For audio files
+                # For audio files, use pydub
                 audio = AudioSegment.from_file(input_path)
                 output_audio = AudioSegment.empty()
                 
@@ -193,19 +271,21 @@ def process_file(args):
                 output_audio.export(output_path, format=output_path.suffix[1:])
                 success = True
 
-            if success:
-                print(f"✓ Completed: {input_path.name}")
-            else:
-                print(f"✗ Failed: {input_path.name}")
-
             return success, input_path
 
     except Exception as e:
-        print(f"✗ Error processing {input_path.name}: {str(e)}")
         return False, f"Error processing {input_path}: {str(e)}"
 
 def find_media_files(directory):
-    """Recursively find all supported media files in directory."""
+    """
+    Recursively find all supported media files in directory.
+    
+    Args:
+        directory: Directory to search
+        
+    Returns:
+        list: List of Path objects for supported media files
+    """
     media_files = []
     skipped_files = []
     
@@ -230,6 +310,7 @@ def find_media_files(directory):
     return media_files
 
 def main():
+    """Main function to handle command line arguments and process files."""
     parser = argparse.ArgumentParser(description="Remove non-speech parts from media files")
     parser.add_argument("input_dir", type=str, help="Input directory containing media files")
     parser.add_argument("--model", type=str, default="base", 
@@ -263,23 +344,23 @@ def main():
         return
     
     logging.info(f"Found {len(media_files)} media files to process")
-    print(f"\nStarting processing of {len(media_files)} files...")
     
-    # Process files with progress tracking
+    # Process files with progress bar
     success_count = 0
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        # Create process arguments
-        process_args = [(f, model, args.padding, args.language, None) for f in media_files]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+        process_args = [(f, model, args.padding, args.language) for f in media_files]
         
-        # Process files
-        for i, (success, result) in enumerate(executor.map(process_file, process_args), 1):
+        for success, result in tqdm(
+            executor.map(process_file, process_args),
+            total=len(media_files),
+            desc="Processing files"
+        ):
             if success:
                 success_count += 1
             else:
                 logging.error(result)
-            print(f"\nProgress: {i}/{len(media_files)} files processed")
     
-    print(f"\nProcessing complete: {success_count}/{len(media_files)} files successfully processed")
+    logging.info(f"Processing complete: {success_count}/{len(media_files)} files successfully processed")
 
 if __name__ == "__main__":
     main()
