@@ -1,345 +1,62 @@
-# Media Speech Trimmer Documentation
+# Whisper Media Trimmer
 
-## Overview
+## What the script does
 
-The Media Speech Trimmer is a Python script that uses OpenAI's Whisper model to detect and extract speech segments from audio and video files. It removes sections without speech, creating trimmed versions that only contain speaking portions.
+`whisper-media-trimmer.py` transcribes a temporary 16 kHz mono WAV with Whisper's `word_timestamps=True`. It sorts recognized words, groups words separated by at most `--merge-threshold`, adds `--padding` around each group, and uses FFmpeg to extract and concatenate those intervals from the original media.
 
-## Requirements
+This is transcription-derived trimming. It is not a standalone VAD, does not use a dB/RMS threshold, and does not guarantee that every retained interval contains only speech or that every spoken word is retained. It cuts time out; it has no mute-in-place mode.
 
-### System Requirements
-- Python 3.8 or higher
-- FFmpeg installation
-- Multi-core processor recommended
-- RAM: 
-  - Minimum 4GB for base model
-  - 8GB+ recommended for larger models
-- Storage: Free space at least 2x the size of source media
-
-### Required Python Packages
-```bash
-# Core dependencies
-pip install openai-whisper
-pip install torch
-pip install pydub
-pip install numpy
-
-# Note: FFmpeg must be installed separately
-```
-
-## Installation
-
-1. Install FFmpeg:
-```bash
-# Ubuntu/Debian
-sudo apt-get update
-sudo apt-get install ffmpeg
-
-# macOS
-brew install ffmpeg
-
-# Windows
-# Download from ffmpeg.org and add to PATH
-```
-
-2. Install Python dependencies:
-```bash
-pip install openai-whisper torch pydub numpy
-```
-
-## Supported Formats
-
-### Audio Formats
-- MP3 (.mp3)
-- WAV (.wav)
-- M4A (.m4a)
-- FLAC (.flac)
-- OGG (.ogg)
-- AAC (.aac)
-- WMA (.wma)
-- AIFF (.aiff)
-- ALAC (.alac)
-- AC3 (.ac3)
-- AMR (.amr)
-- APE (.ape)
-- AU (.au)
-- MKA (.mka)
-- PCM (.pcm)
-- RA (.ra)
-- WavPack (.wv)
-- Opus (.opus)
-
-### Video Formats
-- MP4 (.mp4)
-- AVI (.avi)
-- MKV (.mkv)
-- MOV (.mov)
-- WMV (.wmv)
-- FLV (.flv)
-- WebM (.webm)
-- M4V (.m4v)
-- MPG/MPEG (.mpg, .mpeg)
-- 3GP (.3gp, .3g2)
-- OGV (.ogv)
-- Transport Streams (.ts, .mts, .m2ts)
+See [setup](../README.md#setup) before running. Both `ffmpeg` and `ffprobe` are required; the startup check only checks FFmpeg.
 
 ## Usage
 
-### Basic Usage
+From the repository root:
+
 ```bash
-python media_trimmer.py /path/to/media/directory
+python "_Media Trimmer/whisper-media-trimmer.py" "sample-media" --workers 1
+python "_Media Trimmer/whisper-media-trimmer.py" "sample-media" --language en --model base --padding 250 --merge-threshold 1000 --workers 1
 ```
 
-### Advanced Usage
-```bash
-python media_trimmer.py /path/to/media/directory \
-    --model base \
-    --padding 500 \
-    --workers 4 \
-    --language en
-```
+| Argument | Default | Meaning |
+| --- | --- | --- |
+| `input_dir` | Required | Directory to scan recursively |
+| `--model` | `base` | One of `tiny`, `base`, `small`, `medium`, `large` |
+| `--padding` | `250` | Milliseconds added before and after each grouped interval, clamped to file bounds |
+| `--merge-threshold` | `1000` | Maximum gap in milliseconds between recognized words to join into one interval |
+| `--workers` | `1` | Thread-pool workers sharing one model |
+| `--language` | Unset | Language code passed to Whisper; unset allows detection |
 
-### Command Line Arguments
+Use nonnegative padding and merge thresholds and at least one worker. The parser accepts integers without enforcing those ranges.
 
-| Argument | Description | Default | Options |
-|----------|-------------|---------|----------|
-| `input_dir` | Directory containing media files | Required | Any valid path |
-| `--model` | Whisper model size | `base` | `tiny`, `base`, `small`, `medium`, `large` |
-| `--padding` | Milliseconds to keep before/after speech | `500` | Any positive integer |
-| `--workers` | Number of parallel processing workers | `1` | Any positive integer |
-| `--language` | ISO 639-1 language code | None | `en`, `fr`, `de`, etc. |
+Increasing the merge threshold preserves more gaps inside groups. Padding extends group boundaries; neither option sets a fixed final pause duration. Groups are merged **before** padding. If padding makes separate groups overlap, that overlap can be repeated in the output. For example, two groups separated by 400 ms with a 250 ms merge threshold remain separate, but 250 ms padding on each side overlaps by 100 ms.
 
-Note: When no language is specified, Whisper will attempt to auto-detect the language.
+The Windows `whisper-media-trimmer.bat` uses English, model `base`, padding 250 ms, and **merge threshold 250 ms**, differing from the Python default. It refers to the parent of the current working directory and a relative script path. Run it from `_Media Trimmer` only when that parent is the intended media directory, or use the explicit Python command above.
 
-## Progress Display
+## Inputs and outputs
 
-The script provides clear text-based progress information for each file:
+The extension allowlist in `SUPPORTED_FORMATS` is:
 
-1. File Processing Start:
-```
-Processing: example.mp3
-```
+- Audio: `.mp3 .wav .m4a .flac .ogg .aac .wma .aiff .alac .ac3 .amr .ape .au .mka .pcm .ra .wv .opus`.
+- Video: `.mp4 .avi .mkv .mov .wmv .flv .webm .m4v .mpg .mpeg .3gp .3g2 .ogv .ts .mts .m2ts`.
 
-2. Operation Status:
-```
-⟳ Extracting/loading audio from example.mp3
-⟳ Detecting speech in example.mp3
-⟳ Trimming example.mp3
-```
+An accepted extension is not a tested codec/container guarantee. Decoding, duration probing, stream copying, and concatenation must all work with the installed FFmpeg build. Raw PCM, for example, may require format parameters that this script does not provide.
 
-3. Completion Status:
-```
-✓ Completed: example.mp3
-```
-or
-```
-✗ Failed: example.mp3
-```
+`meeting.mp4` produces `meeting_trimmed.mp4` in the same directory. The source is not intentionally modified. The scan skips directories, zero-byte files, and files whose own name starts with a dot; it does not explicitly exclude hidden parent directories.
 
-4. Overall Progress:
-```
-Progress: 1/6 files processed
-```
+**Rerun behavior:** the scan does not exclude `*_trimmed` files or skip sources with an existing output. FFmpeg uses `-y`, so a rerun can overwrite `meeting_trimmed.mp4` and create `meeting_trimmed_trimmed.mp4`. Keep generated media outside the input tree before another run.
 
-### Status Symbols
-- ⟳ : Operation in progress
-- ✓ : Successfully completed
-- ✗ : Operation failed/skipped
+## Quality and failure behavior
 
-## Processing Workflow
+- Extraction and concatenation both request `-c copy`; there is no re-encoding fallback. This avoids codec re-encoding when successful, but does not guarantee exact cuts, preserved metadata, or all input streams. There is no explicit `-map` for all streams.
+- Check cuts and audio/video sync, especially with inter-frame video codecs. Stream copy is not a guarantee of frame-accurate speech boundaries.
+- If Whisper returns no word intervals, no new trimmed file is made and the file counts as unsuccessful. Transcription errors also return an empty interval list, so inspect earlier logs to distinguish an error from no recognized speech. An older output may still exist.
+- Temporary WAVs and segment files use per-file temporary directories. Disk demand depends on duration and segment count; no fixed storage or output-size ratio has been established.
+- Logs/progress go to the console. The script does not configure a persistent log file. Inspect the summary and output playback; a zero process exit code alone is not a success guarantee.
 
-1. Initialization:
-   - Load Whisper model
-   - Scan directory for media files
-   - Initialize processing queue
+## Troubleshooting and validation
 
-2. Per-File Processing:
-   - File type detection
-   - Audio extraction (for videos)
-   - Speech detection
-   - Content trimming
-   - Output file creation
+Check `ffmpeg -version` and `ffprobe -version` in the same environment used to run Python. For import failures, install dependencies into that interpreter. For memory errors, keep `--workers 1` and try a smaller model. For empty output or missed words, inspect the source audio and earlier errors before changing padding.
 
-3. Completion:
-   - Success/failure count
-   - Processing summary
-   - Cleanup of temporary files
+Before batch use, listen to a short result, compare boundaries against the original, and check video sync. Confirm behavior with quiet speech, background music, short pauses, and no-speech recordings. Resource estimates and accuracy claims from older drafts were removed because they were not backed by repository tests.
 
-## Performance Considerations
-
-### Memory Usage
-Memory requirements vary by component:
-- Video processing: ~500MB-1GB per worker
-- Audio processing: ~50-100MB per worker
-- Whisper models:
-  - tiny: ~150MB
-  - base: ~500MB
-  - small: ~1GB
-  - medium: ~2.5GB
-  - large: ~5GB
-
-### Processing Time
-Factors affecting speed:
-- Media duration
-- Video resolution
-- Whisper model size
-- Number of workers
-- CPU/GPU availability
-
-### Storage Requirements
-- Source files: Original size
-- Temporary files: ~500MB per worker
-- Output files: 30-70% of original size
-- Required free space: 2x total source size
-
-## Best Practices
-
-### Directory Organization
-
-The script preserves the original directory structure and creates trimmed files alongside the originals:
-
-```
-input_directory/
-├── subfolder1/
-│   ├── video1.mp4
-│   ├── video1_trimmed.mp4           # Created by script
-│   ├── audio1.mp3
-│   └── audio1_trimmed.mp3           # Created by script
-└── subfolder2/
-    ├── lecture.mp4
-    ├── lecture_trimmed.mp4          # Created by script
-    ├── interview.wav
-    └── interview_trimmed.wav        # Created by script
-```
-
-Each processed file is created in the same directory as its source file, with "_trimmed" added to the filename. This:
-- Maintains the original organization
-- Keeps related files together
-- Makes it easy to find processed versions
-- Preserves the original files
-
-### Processing Strategy
-1. Test Run:
-```bash
-# Process a few files first
-python media_trimmer.py /test/directory --workers 1
-```
-
-2. Batch Processing:
-```bash
-# Process larger batches
-python media_trimmer.py /main/directory --workers 4
-```
-
-3. Large Collections:
-```bash
-# Process overnight
-nohup python media_trimmer.py /large/directory --workers 4 > processing.log 2>&1 &
-```
-
-### Optimizing Performance
-1. Worker Count:
-   - CPU cores ÷ 2 for video
-   - CPU cores × 1 for audio
-   - Reduce if memory limited
-
-2. Model Selection:
-   - tiny: Fast, basic accuracy
-   - base: Good balance
-   - large: Best quality, slower
-
-3. Padding Values:
-   - 500ms: Default
-   - 750ms: More context
-   - 250ms: Tighter trimming
-
-## Troubleshooting
-
-### Common Issues
-
-1. FFmpeg not found:
-```
-Error: FFmpeg is not installed or not found in PATH
-Solution: Install FFmpeg and verify PATH
-```
-
-2. Memory errors:
-```
-Error: Memory error during processing
-Solution: Reduce worker count or use smaller model
-```
-
-3. Processing errors:
-```
-Error: Failed to process [filename]
-Solution: Check file permissions and format
-```
-
-4. No speech detected:
-```
-Error: No speech segments found
-Solution: Verify audio quality and speech content
-```
-
-### Quality Checks
-
-1. Pre-processing:
-   - Verify file integrity
-   - Check audio levels
-   - Ensure sufficient space
-   - Test with sample files
-
-2. Post-processing:
-   - Compare durations
-   - Verify audio quality
-   - Check speech continuity
-   - Validate file sizes
-
-## Examples
-
-### Process English Audio Files
-```bash
-python media_trimmer.py /path/to/audio \
-    --model base \
-    --language en \
-    --workers 4
-```
-
-### Process High-Quality Video
-```bash
-python media_trimmer.py /path/to/video \
-    --model medium \
-    --padding 750 \
-    --workers 2
-```
-
-Example output:
-```
-Processing: lecture.mp4
-⟳ Extracting/loading audio from lecture.mp4
-⟳ Detecting speech in lecture.mp4
-⟳ Trimming lecture.mp4
-✓ Completed: lecture.mp4
-
-Progress: 1/3 files processed
-```
-
-### Mixed Media Processing
-```bash
-python media_trimmer.py /path/to/media \
-    --model small \
-    --workers 3 \
-    --padding 500
-```
-
-## Support
-
-For issues and updates:
-1. Check FFmpeg installation
-2. Verify Python dependencies
-3. Test with smaller batches
-4. Review log output
-5. Check system resources
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
+See [research and alternatives](../docs/speech-and-silence.md) and [remaining confirmations](../docs/documentation-review.md).
